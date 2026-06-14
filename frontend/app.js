@@ -37,3 +37,46 @@ document.getElementById("uploadBtn").addEventListener("click", async () => {
   document.getElementById("chatInput").disabled = false;
   document.getElementById("sendBtn").disabled = false;
 });
+
+document.getElementById("summaryBtn").addEventListener("click", async () => {
+  document.getElementById("summary").textContent = "Generating summary...";
+
+  const response = await fetch(`${API_URL}/summary?session_id=${sessionId}`, {
+    method: "POST"
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    document.getElementById("summary").textContent = "Error: " + error.detail;
+    return;
+  }
+
+  const data = await response.json();
+  document.getElementById("summary").textContent = data.summary;
+});
+
+document.getElementById("sendBtn").addEventListener("click", async () => {
+  const input = document.getElementById("chatInput");
+  const message = input.value.trim();
+  if (!message) return;
+
+  const chatDiv = document.getElementById("chat");
+  chatDiv.innerHTML += `<p class="msg-user"><b>You:</b> ${message}</p>`;
+  input.value = "";
+
+  const response = await fetch(`${API_URL}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, message: message })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    chatDiv.innerHTML += `<p>Error: ${error.detail}</p>`;
+    return;
+  }
+
+  const data = await response.json();
+  chatDiv.innerHTML += `<p class="msg-assistant"><b>DocChat:</b> ${data.answer}</p>`;
+  chatDiv.scrollTop = chatDiv.scrollHeight;
+});

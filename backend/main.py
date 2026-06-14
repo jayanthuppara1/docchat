@@ -3,6 +3,7 @@ from fastapi import UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from anthropic import Anthropic
 from dotenv import load_dotenv
+from pydantic import BaseModel
 import fitz  # PyMuPDF's import name
 import uuid
 import os
@@ -15,6 +16,11 @@ app = FastAPI(title="DocChat API")
 sessions = {}
 
 os.makedirs("uploads", exist_ok=True)
+
+
+class ChatRequest(BaseModel):
+    session_id: str
+    message: str
 
 app.add_middleware(
     CORSMiddleware,
@@ -92,3 +98,35 @@ End with: "This summary is for understanding only and is not legal advice."
     summary_text = response.content[0].text
 
     return {"summary": summary_text}
+
+
+@app.post("/chat")
+async def chat(request: ChatRequest):
+    if request.session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = sessions[request.session_id]
+    document_text = session["text"]
+
+    context_prompt = f"""You are answering questions about a document for someone reviewing it before signing or agreeing to it.
+
+Document content:
+{document_text}
+
+Answer the user's question based only on this document. If the answer is not in the document, say so clearly. Keep the answer simple and avoid legal advice -- if relevant, add a brief disclaimer.
+
+User's question: {request.message}
+"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": context_prompt}]
+    )
+
+    answer = response.content[0].text
+
+    session["chat_history"].append({"role": "user", "content": request.message})
+    session["chat_history"].append({"role": "assistant", "content": answer})
+
+    return {"answer": answer}

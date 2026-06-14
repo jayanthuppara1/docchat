@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi import UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from anthropic import Anthropic
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -16,6 +17,8 @@ app = FastAPI(title="DocChat API")
 sessions = {}
 UPLOAD_DIR = "uploads"
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -154,3 +157,6 @@ User's question: {message}
     session["chat_history"].append({"role": "assistant", "content": answer})
 
     return {"answer": answer}
+
+
+app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

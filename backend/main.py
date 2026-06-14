@@ -14,8 +14,10 @@ client = Anthropic()
 app = FastAPI(title="DocChat API")
 
 sessions = {}
+UPLOAD_DIR = "uploads"
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
-os.makedirs("uploads", exist_ok=True)
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 class ChatRequest(BaseModel):
@@ -37,25 +39,31 @@ def health():
 
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
-    if not file.filename.endswith(".pdf"):
+    if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
-    file_path = f"uploads/{file.filename}"
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail="PDF must be 10MB or smaller")
+
+    session_id = str(uuid.uuid4())
+    file_path = os.path.join(UPLOAD_DIR, f"{session_id}.pdf")
     with open(file_path, "wb") as f:
-        content = await file.read()
         f.write(content)
 
-    doc = fitz.open(file_path)
-    text = ""
-    for page in doc:
-        text += page.get_text()
-    page_count = len(doc)
-    doc.close()
+    try:
+        doc = fitz.open(file_path)
+        text = ""
+        for page in doc:
+            text += page.get_text()
+        page_count = len(doc)
+        doc.close()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Could not process this PDF") from exc
 
     if not text.strip():
         raise HTTPException(status_code=400, detail="Could not extract text from this PDF")
 
-    session_id = str(uuid.uuid4())
     sessions[session_id] = {
         "filename": file.filename,
         "text": text,
@@ -89,11 +97,17 @@ Provide:
 End with: "This summary is for understanding only and is not legal advice."
 """
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
-        messages=[{"role": "user", "content": prompt}]
-    )
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}]
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not generate summary. Please try again."
+        ) from exc
 
     summary_text = response.content[0].text
 
@@ -105,6 +119,10 @@ async def chat(request: ChatRequest):
     if request.session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    message = request.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
     session = sessions[request.session_id]
     document_text = session["text"]
 
@@ -115,18 +133,24 @@ Document content:
 
 Answer the user's question based only on this document. If the answer is not in the document, say so clearly. Keep the answer simple and avoid legal advice -- if relevant, add a brief disclaimer.
 
-User's question: {request.message}
+User's question: {message}
 """
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
-        messages=[{"role": "user", "content": context_prompt}]
-    )
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": context_prompt}]
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not generate an answer. Please try again."
+        ) from exc
 
     answer = response.content[0].text
 
-    session["chat_history"].append({"role": "user", "content": request.message})
+    session["chat_history"].append({"role": "user", "content": message})
     session["chat_history"].append({"role": "assistant", "content": answer})
 
     return {"answer": answer}

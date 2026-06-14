@@ -1,9 +1,14 @@
 from fastapi import FastAPI
 from fastapi import UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from anthropic import Anthropic
+from dotenv import load_dotenv
 import fitz  # PyMuPDF's import name
 import uuid
 import os
+
+load_dotenv()
+client = Anthropic()
 
 app = FastAPI(title="DocChat API")
 
@@ -56,3 +61,34 @@ async def upload_pdf(file: UploadFile = File(...)):
         "filename": file.filename,
         "page_count": page_count
     }
+
+
+@app.post("/summary")
+async def get_summary(session_id: str):
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    document_text = sessions[session_id]["text"]
+
+    prompt = f"""You are reviewing a document for someone who needs to understand it before signing or agreeing to it.
+
+Document content:
+{document_text}
+
+Provide:
+1. A simple summary of what this document is and its main purpose
+2. Key terms, obligations, fees, deadlines, or responsibilities
+3. Any clauses that may need careful review (penalties, cancellation terms, auto-renewal, liability, deposits)
+
+End with: "This summary is for understanding only and is not legal advice."
+"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    summary_text = response.content[0].text
+
+    return {"summary": summary_text}

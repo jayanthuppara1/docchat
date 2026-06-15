@@ -2,6 +2,15 @@ const API_URL = window.location.port === "5500" ? "http://127.0.0.1:8000" : "";
 
 let sessionId = null;
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 document.getElementById("uploadBtn").addEventListener("click", async () => {
   const fileInput = document.getElementById("fileInput");
   const file = fileInput.files[0];
@@ -39,7 +48,7 @@ document.getElementById("uploadBtn").addEventListener("click", async () => {
 });
 
 document.getElementById("summaryBtn").addEventListener("click", async () => {
-  document.getElementById("summary").textContent = "Generating summary...";
+  document.getElementById("summary").innerHTML = "Generating summary...";
 
   const response = await fetch(`${API_URL}/summary?session_id=${sessionId}`, {
     method: "POST"
@@ -47,12 +56,27 @@ document.getElementById("summaryBtn").addEventListener("click", async () => {
 
   if (!response.ok) {
     const error = await response.json();
-    document.getElementById("summary").textContent = "Error: " + error.detail;
+    document.getElementById("summary").innerHTML = "Error: " + escapeHtml(error.detail);
     return;
   }
 
   const data = await response.json();
-  document.getElementById("summary").textContent = data.summary;
+
+  let html = `<h3>Overview</h3><p>${escapeHtml(data.overview)}</p>`;
+
+  html += `<h3>Key Terms</h3><ul>`;
+  data.key_terms.forEach(item => html += `<li>${escapeHtml(item)}</li>`);
+  html += `</ul>`;
+
+  if (data.risks.length > 0) {
+    html += `<h3>⚠️ Risks to Review</h3><ul>`;
+    data.risks.forEach(item => html += `<li class="risk">${escapeHtml(item)}</li>`);
+    html += `</ul>`;
+  }
+
+  html += `<p class="disclaimer">${escapeHtml(data.disclaimer)}</p>`;
+
+  document.getElementById("summary").innerHTML = html;
 });
 
 document.getElementById("sendBtn").addEventListener("click", async () => {

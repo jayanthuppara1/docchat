@@ -8,6 +8,7 @@ from pydantic import BaseModel
 import fitz  # PyMuPDF's import name
 import uuid
 import os
+import json
 
 load_dotenv()
 client = Anthropic()
@@ -26,6 +27,48 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 class ChatRequest(BaseModel):
     session_id: str
     message: str
+
+
+def parse_summary_response(raw: str):
+    cleaned = raw.strip()
+
+    if cleaned.startswith("```"):
+        lines = cleaned.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        cleaned = "\n".join(lines).strip()
+
+    try:
+        summary_data = json.loads(cleaned)
+    except json.JSONDecodeError:
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise
+        summary_data = json.loads(cleaned[start:end + 1])
+
+    if not isinstance(summary_data, dict):
+        raise ValueError("Summary response must be a JSON object")
+
+    for key in ("overview", "key_terms", "risks", "disclaimer"):
+        if key not in summary_data:
+            raise ValueError(f"Missing summary field: {key}")
+
+    if not isinstance(summary_data["overview"], str):
+        raise ValueError("Summary overview must be a string")
+    if not isinstance(summary_data["key_terms"], list):
+        raise ValueError("Summary key_terms must be a list")
+    if not isinstance(summary_data["risks"], list):
+        raise ValueError("Summary risks must be a list")
+    if not isinstance(summary_data["disclaimer"], str):
+        raise ValueError("Summary disclaimer must be a string")
+
+    summary_data["key_terms"] = [str(item) for item in summary_data["key_terms"]]
+    summary_data["risks"] = [str(item) for item in summary_data["risks"]]
+
+    return summary_data
 
 app.add_middleware(
     CORSMiddleware,
@@ -92,12 +135,16 @@ async def get_summary(session_id: str):
 Document content:
 {document_text}
 
-Provide:
-1. A simple summary of what this document is and its main purpose
-2. Key terms, obligations, fees, deadlines, or responsibilities
-3. Any clauses that may need careful review (penalties, cancellation terms, auto-renewal, liability, deposits)
+Respond with ONLY valid JSON in this exact structure, no other text:
 
-End with: "This summary is for understanding only and is not legal advice."
+{{
+  "overview": "1-2 sentence plain-language summary of what this document is",
+  "key_terms": ["term 1: explanation", "term 2: explanation", "..."],
+  "risks": ["risk 1: why it matters", "risk 2: why it matters", "..."],
+  "disclaimer": "This summary is for understanding only and is not legal advice."
+}}
+
+Keep each list item short and clear. If there are no notable risks, return an empty array for risks.
 """
 
     try:
@@ -112,9 +159,14 @@ End with: "This summary is for understanding only and is not legal advice."
             detail="Could not generate summary. Please try again."
         ) from exc
 
-    summary_text = response.content[0].text
+    raw = response.content[0].text
 
-    return {"summary": summary_text}
+    try:
+        summary_data = parse_summary_response(raw)
+    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=502, detail="Could not parse summary response") from exc
+
+    return summary_data
 
 
 @app.post("/chat")

@@ -37,6 +37,14 @@ flowchart LR
     FastAPI --> Browser
 ```
 
+Flow:
+
+1. User uploads a PDF from the browser.
+2. FastAPI receives the file and PyMuPDF extracts readable text.
+3. The backend stores the `session_id`, extracted text, and chat history in memory.
+4. Summary and chat requests send document context to Claude.
+5. Claude's response returns through FastAPI and is displayed in the browser.
+
 ## Tech Stack
 
 | Tool | Purpose |

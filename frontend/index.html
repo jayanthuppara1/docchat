@@ -4,27 +4,87 @@
   <meta charset="UTF-8">
   <title>DocChat</title>
   <style>
-    body { font-family: sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; }
-    #chat { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: auto; margin-top: 20px; }
-    .msg-user { color: #333; margin: 8px 0; }
-    .msg-assistant { color: #0a5; margin: 8px 0; }
-    #status { color: #888; font-size: 14px; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      max-width: 700px;
+      margin: 40px auto;
+      padding: 0 20px;
+      color: #1a1a1a;
+      background: #fafafa;
+    }
+    h1 { font-size: 28px; margin-bottom: 4px; }
+    p.subtitle { color: #666; margin-top: 0; }
+
+    .card {
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    button:hover:not(:disabled) { background: #1d4ed8; }
+
+    input[type="text"] {
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      width: 70%;
+      font-size: 14px;
+    }
+
+    #status { color: #888; font-size: 14px; margin-top: 8px; }
+
+    #summary { line-height: 1.6; }
+    #summary h3 { margin-top: 16px; margin-bottom: 6px; font-size: 15px; }
+    #summary ul { margin: 0 0 12px 0; padding-left: 22px; }
+    #summary .risk { color: #b91c1c; }
+    #summary .disclaimer { font-size: 12px; color: #999; margin-top: 12px; }
+
+    #chat {
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      background: white;
+      padding: 12px;
+      height: 280px;
+      overflow-y: auto;
+      margin-bottom: 10px;
+    }
+    .msg-user { color: #1a1a1a; margin: 8px 0; }
+    .msg-assistant { color: #15803d; margin: 8px 0; }
   </style>
 </head>
 <body>
   <h1>DocChat</h1>
-  <p>Upload a PDF, get a summary, and ask questions about it.</p>
+  <p class="subtitle">Upload a PDF, get a summary, and ask questions about it.</p>
 
-  <input type="file" id="fileInput" accept=".pdf">
-  <button id="uploadBtn">Upload</button>
-  <p id="status"></p>
+  <div class="card">
+    <input type="file" id="fileInput" accept=".pdf">
+    <button id="uploadBtn">Upload</button>
+    <p id="status"></p>
+  </div>
 
-  <button id="summaryBtn" disabled>Get Summary</button>
-  <div id="summary"></div>
+  <div class="card">
+    <button id="summaryBtn" disabled>Get Summary</button>
+    <div id="summary"></div>
+  </div>
 
-  <div id="chat"></div>
-  <input type="text" id="chatInput" placeholder="Ask a question..." disabled>
-  <button id="sendBtn" disabled>Send</button>
+  <div class="card">
+    <div id="chat"></div>
+    <input type="text" id="chatInput" placeholder="Ask a question..." disabled>
+    <button id="sendBtn" disabled>Send</button>
+  </div>
 
   <script src="app.js"></script>
 </body>

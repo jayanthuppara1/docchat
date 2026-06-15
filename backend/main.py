@@ -18,6 +18,7 @@ app = FastAPI(title="DocChat API")
 sessions = {}
 UPLOAD_DIR = "uploads"
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024
+SUMMARY_MAX_INPUT_CHARS = 60000
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
 
@@ -39,6 +40,9 @@ def parse_summary_response(raw: str):
         if lines and lines[-1].strip() == "```":
             lines = lines[:-1]
         cleaned = "\n".join(lines).strip()
+
+    if not cleaned.startswith("{") and '"overview"' in cleaned:
+        cleaned = "{" + cleaned
 
     try:
         summary_data = json.loads(cleaned)
@@ -129,28 +133,41 @@ async def get_summary(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
 
     document_text = sessions[session_id]["text"]
+    summary_context = document_text[:SUMMARY_MAX_INPUT_CHARS]
+    if len(document_text) > SUMMARY_MAX_INPUT_CHARS:
+        summary_context += (
+            "\n\n[Document text was shortened for this v1 summary because it is long. "
+            "Summarize only the provided extracted text and avoid inventing missing details.]"
+        )
 
     prompt = f"""You are reviewing a document for someone who needs to understand it before signing or agreeing to it.
 
 Document content:
-{document_text}
+{summary_context}
 
-Respond with ONLY valid JSON in this exact structure, no other text:
+Respond with ONLY compact, valid JSON. Do not include markdown, code fences, explanations, or trailing commas.
+
+Use this exact structure:
 
 {{
   "overview": "1-2 sentence plain-language summary of what this document is",
-  "key_terms": ["term 1: explanation", "term 2: explanation", "..."],
-  "risks": ["risk 1: why it matters", "risk 2: why it matters", "..."],
+  "key_terms": ["term 1: explanation", "term 2: explanation"],
+  "risks": ["risk 1: why it matters", "risk 2: why it matters"],
   "disclaimer": "This summary is for understanding only and is not legal advice."
 }}
 
-Keep each list item short and clear. If there are no notable risks, return an empty array for risks.
+Rules:
+- Return at most 8 key_terms.
+- Return at most 6 risks.
+- Keep each list item under 25 words.
+- If there are no notable risks, return an empty array for risks.
+- Start with "overview" and end with the closing JSON brace.
 """
 
     try:
         response = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=1024,
+            max_tokens=2048,
             messages=[{"role": "user", "content": prompt}]
         )
     except Exception as exc:

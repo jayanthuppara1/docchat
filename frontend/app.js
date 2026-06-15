@@ -11,6 +11,12 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
+function toArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value === undefined || value === null || value === "") return [];
+  return [String(value)];
+}
+
 document.getElementById("uploadBtn").addEventListener("click", async () => {
   const fileInput = document.getElementById("fileInput");
   const file = fileInput.files[0];
@@ -48,35 +54,50 @@ document.getElementById("uploadBtn").addEventListener("click", async () => {
 });
 
 document.getElementById("summaryBtn").addEventListener("click", async () => {
-  document.getElementById("summary").innerHTML = "Generating summary...";
+  const summaryEl = document.getElementById("summary");
+  const summaryBtn = document.getElementById("summaryBtn");
+  summaryEl.innerHTML = "Generating summary...";
+  summaryBtn.disabled = true;
 
-  const response = await fetch(`${API_URL}/summary?session_id=${sessionId}`, {
-    method: "POST"
-  });
+  try {
+    const response = await fetch(`${API_URL}/summary?session_id=${sessionId}`, {
+      method: "POST"
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    document.getElementById("summary").innerHTML = "Error: " + escapeHtml(error.detail);
-    return;
+    if (!response.ok) {
+      const error = await response.json();
+      summaryEl.innerHTML = "Error: " + escapeHtml(error.detail || "Could not generate summary");
+      return;
+    }
+
+    const data = await response.json();
+    const keyTerms = toArray(data.key_terms);
+    const risks = toArray(data.risks);
+    const overview = data.overview || "No overview was returned.";
+    const disclaimer = data.disclaimer || "This summary is for understanding only and is not legal advice.";
+
+    let html = `<h3>Overview</h3><p>${escapeHtml(overview)}</p>`;
+
+    if (keyTerms.length > 0) {
+      html += `<h3>Key Terms</h3><ul>`;
+      keyTerms.forEach(item => html += `<li>${escapeHtml(item)}</li>`);
+      html += `</ul>`;
+    }
+
+    if (risks.length > 0) {
+      html += `<h3>⚠️ Risks to Review</h3><ul>`;
+      risks.forEach(item => html += `<li class="risk">${escapeHtml(item)}</li>`);
+      html += `</ul>`;
+    }
+
+    html += `<p class="disclaimer">${escapeHtml(disclaimer)}</p>`;
+
+    summaryEl.innerHTML = html;
+  } catch (error) {
+    summaryEl.innerHTML = "Error: Could not display the summary. Please try again.";
+  } finally {
+    summaryBtn.disabled = false;
   }
-
-  const data = await response.json();
-
-  let html = `<h3>Overview</h3><p>${escapeHtml(data.overview)}</p>`;
-
-  html += `<h3>Key Terms</h3><ul>`;
-  data.key_terms.forEach(item => html += `<li>${escapeHtml(item)}</li>`);
-  html += `</ul>`;
-
-  if (data.risks.length > 0) {
-    html += `<h3>⚠️ Risks to Review</h3><ul>`;
-    data.risks.forEach(item => html += `<li class="risk">${escapeHtml(item)}</li>`);
-    html += `</ul>`;
-  }
-
-  html += `<p class="disclaimer">${escapeHtml(data.disclaimer)}</p>`;
-
-  document.getElementById("summary").innerHTML = html;
 });
 
 document.getElementById("sendBtn").addEventListener("click", async () => {
@@ -85,7 +106,7 @@ document.getElementById("sendBtn").addEventListener("click", async () => {
   if (!message) return;
 
   const chatDiv = document.getElementById("chat");
-  chatDiv.innerHTML += `<p class="msg-user"><b>You:</b> ${message}</p>`;
+  chatDiv.innerHTML += `<p class="msg-user"><b>You:</b> ${escapeHtml(message)}</p>`;
   input.value = "";
 
   const response = await fetch(`${API_URL}/chat`, {

@@ -19,6 +19,7 @@ sessions = {}
 UPLOAD_DIR = "uploads"
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 SUMMARY_MAX_INPUT_CHARS = 60000
+SUMMARY_DISCLAIMER = "This summary is for understanding only and is not legal advice."
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
 
@@ -48,10 +49,9 @@ def parse_summary_response(raw: str):
         summary_data = json.loads(cleaned)
     except json.JSONDecodeError:
         start = cleaned.find("{")
-        end = cleaned.rfind("}")
-        if start == -1 or end == -1 or end <= start:
+        if start == -1:
             raise
-        summary_data = json.loads(cleaned[start:end + 1])
+        summary_data, _ = json.JSONDecoder().raw_decode(cleaned[start:])
 
     if not isinstance(summary_data, dict):
         raise ValueError("Summary response must be a JSON object")
@@ -73,6 +73,21 @@ def parse_summary_response(raw: str):
     summary_data["risks"] = [str(item) for item in summary_data["risks"]]
 
     return summary_data
+
+
+def fallback_summary_response(raw: str):
+    fallback_text = raw.strip()
+    if not fallback_text:
+        fallback_text = "A summary was generated, but it could not be displayed in the expected format."
+
+    return {
+        "overview": fallback_text,
+        "key_terms": [],
+        "risks": [
+            "The response could not be fully structured, so review the original document for exact terms."
+        ],
+        "disclaimer": SUMMARY_DISCLAIMER
+    }
 
 app.add_middleware(
     CORSMiddleware,
@@ -153,7 +168,7 @@ Use this exact structure:
   "overview": "1-2 sentence plain-language summary of what this document is",
   "key_terms": ["term 1: explanation", "term 2: explanation"],
   "risks": ["risk 1: why it matters", "risk 2: why it matters"],
-  "disclaimer": "This summary is for understanding only and is not legal advice."
+  "disclaimer": "{SUMMARY_DISCLAIMER}"
 }}
 
 Rules:
@@ -181,7 +196,7 @@ Rules:
     try:
         summary_data = parse_summary_response(raw)
     except (json.JSONDecodeError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=502, detail="Could not parse summary response") from exc
+        summary_data = fallback_summary_response(raw)
 
     return summary_data
 
